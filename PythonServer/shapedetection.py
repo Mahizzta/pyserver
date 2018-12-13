@@ -1,91 +1,88 @@
-#!/usr/bin/python
-import math
-import numpy as np
+
+import sys
+#Change the following line
+sys.path.append('C:\Brugere\Kasper\Downloads\opencv\sources\samples\python')
+
 import cv2
 
-#dictionary of all contours
-contours = {}
-#array of edges of polygon
-approx = []
-#scale of the text
-scale = 2
-#camera
-cap = cv2.VideoCapture(0)
-print("press q to exit")
+import socket
+import time
 
-# Define the codec and create VideoWriter object
-fourcc = cv2.VideoWriter_fourcc(*'XVID')
-out = cv2.VideoWriter('output.avi',fourcc, 20.0, (640,480))
 
-#calculate angle
-def angle(pt1,pt2,pt0):
-    dx1 = pt1[0][0] - pt0[0][0]
-    dy1 = pt1[0][1] - pt0[0][1]
-    dx2 = pt2[0][0] - pt0[0][0]
-    dy2 = pt2[0][1] - pt0[0][1]
-    return float((dx1*dx2 + dy1*dy2))/math.sqrt(float((dx1*dx1 + dy1*dy1))*(dx2*dx2 + dy2*dy2) + 1e-10)
+UDP_IP = "127.0.0.1"
+UDP_PORT = 5065
 
-while(cap.isOpened()):
-    #Capture frame-by-frame
-    ret, frame = cap.read()
-    if ret==True:
-        #grayscale
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        #Canny
-        canny = cv2.Canny(frame,80,240,3)
+print("UDP target IP:", UDP_IP)
+print("UDP target port:", UDP_PORT)
+#print "message:", MESSAGE
 
-        #contours
-        canny2, contours, hierarchy = cv2.findContours(canny,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
-        for i in range(0,len(contours)):
-            #approximate the contour with accuracy proportional to
-            #the contour perimeter
-            approx = cv2.approxPolyDP(contours[i],cv2.arcLength(contours[i],True)*0.02,True)
+sock = socket.socket(socket.AF_INET, # Internet
+                     socket.SOCK_DGRAM) # UDP
+cam=cv2.VideoCapture(0)
+last_recorded_time = time.time() # this keeps track of the last time a frame was processed
 
-            #Skip small or non-convex objects
-            if(abs(cv2.contourArea(contours[i]))<100 or not(cv2.isContourConvex(approx))):
-                continue
 
-            #triangle
-            if(len(approx) == 3):
-                x,y,w,h = cv2.boundingRect(contours[i])
-                cv2.putText(frame,'TRI',(x,y),cv2.FONT_HERSHEY_SIMPLEX,scale,(255,255,255),2,cv2.LINE_AA)
-            elif(len(approx)>=4 and len(approx)<=6):
-                #nb vertices of a polygonal curve
-                vtc = len(approx)
-                #get cos of all corners
-                cos = []
-                for j in range(2,vtc+1):
-                    cos.append(angle(approx[j%vtc],approx[j-2],approx[j-1]))
-                #sort ascending cos
-                cos.sort()
-                #get lowest and highest
-                mincos = cos[0]
-                maxcos = cos[-1]
+def shapedetect() :
+    img2 = cv2.imread("shapes.jpg", cv2.IMREAD_GRAYSCALE)
+    _, threshold = cv2.threshold(img2, 55, 255, cv2.THRESH_BINARY)
+    _, contours, _ = cv2.findContours(threshold, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-                #Use the degrees obtained above and the number of vertices
-                #to determine the shape of the contour
-                x,y,w,h = cv2.boundingRect(contours[i])
-                if(vtc==4):
-                    cv2.putText(frame,'RECT',(x,y),cv2.FONT_HERSHEY_SIMPLEX,scale,(255,255,255),2,cv2.LINE_AA)
-                elif(vtc==5):
-                    cv2.putText(frame,'PENTA',(x,y),cv2.FONT_HERSHEY_SIMPLEX,scale,(255,255,255),2,cv2.LINE_AA)
-                elif(vtc==6):
-                    cv2.putText(frame,'HEXA',(x,y),cv2.FONT_HERSHEY_SIMPLEX,scale,(255,255,255),2,cv2.LINE_AA)
-            else:
-                #detect and label circle
-                area = cv2.contourArea(contours[i])
-                x,y,w,h = cv2.boundingRect(contours[i])
-                radius = w/2
-                if(abs(1 - (float(w)/h))<=2 and abs(1-(area/(math.pi*radius*radius)))<=0.2):
-                    cv2.putText(frame,'CIRC',(x,y),cv2.FONT_HERSHEY_SIMPLEX,scale,(255,255,255),2,cv2.LINE_AA)
+    font = cv2.FONT_HERSHEY_COMPLEX
+    for cnt in contours:
+        approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
+        cv2.drawContours(img2, [approx], 0, (0), 5)
+        x = approx.ravel()[0]
+        y = approx.ravel()[1]
+        M = cv2.moments(cnt)
 
-        #Display the resulting frame
-        out.write(frame)
-        cv2.imshow('frame',frame)
-        cv2.imshow('canny',canny)
-        if cv2.waitKey(1) == 1048689: #if q is pressed
-            break
+        if len(approx) == 3:
+            cv2.putText(img, "Triangle", (x, y), font, 1, (0))
+            print("Found triangle")
+            if (M["m00"] != 0):
+                cX = float(M["m10"] / M["m00"])
+                cY = float(M["m01"] / M["m00"])
+                scX = str(cX)
+                scY = str(cY)
+                scXY = scX + ',' + scY
+                sock.sendto(scXY.encode(), (UDP_IP, UDP_PORT))
+                print(scXY)
 
-#When everything done, release the capture
-cap.release()
-cv2.destroyAllWindows()
+        elif len(approx) > 6:
+            cv2.putText(img, "Circle", (x, y), font, 1, (0))
+            print("Found circle")
+            if (M["m00"] != 0):
+                cX = int(M["m10"] / M["m00"])
+                cY = int(M["m01"] / M["m00"])
+                scX = str(cX)
+                scY = str(cY)
+                scXY = scX + ',' + scY
+                sock.sendto(scXY.encode(), (UDP_IP, UDP_PORT))
+                print(scXY)
+
+
+        else:
+            pass
+
+
+
+
+
+    #cv2.imshow("shapes", img2)
+
+while True:
+    curr_time = time.time() # grab the current time
+
+    # keep these three statements outside of the if statement, so we
+    #     can still display the camera/video feed in real time
+    suc, img=cam.read()
+    #operation on image, it's not important
+
+
+    if curr_time - last_recorded_time >= 2.0: # it has been at least 2 seconds
+        # NOTE: ADD SOME STATEMENTS HERE TO PROCESS YOUR IMAGE VARIABLE, img
+        cv2.imwrite("shapes.jpg", img)
+        # IMPORTANT CODE BELOW
+        last_recorded_time = curr_time
+        shapedetect()
+
+

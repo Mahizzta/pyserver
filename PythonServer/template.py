@@ -7,7 +7,7 @@ cap = cv2.VideoCapture(0)  # Webcam Capture
 while (True):
 
     ret, frame = cap.read()
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     for i in range(3):
         template = cv2.imread('images/face.png', 0)
@@ -24,10 +24,6 @@ while (True):
         cv2.putText(frame, 'Detected Face ID: ' + str(i), (top_left[0], top_left[1] - 10),
                     cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255))
         print(str(top_left[0]) + ", " + str(top_left[1]-10))
-      #  M = cv2.moments(i)
-       # cX = int(M["m10"] / M["m00"])
-       # cY = int(M["m01"] / M["m00"])
-        print('cX' + ',' + 'cY')
     cv2.imshow('Test', frame)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
